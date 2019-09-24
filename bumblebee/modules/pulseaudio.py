@@ -19,6 +19,7 @@ Requires the following executable:
 
 import re
 
+import logging
 import bumblebee.util
 import bumblebee.input
 import bumblebee.output
@@ -99,22 +100,29 @@ class Module(bumblebee.engine.Module):
         self._mute = value
 
     def getvolume(self, line):
+        logging.debug("got line: {}".format(line))
         if "mono" in line:
             m = re.search(r'mono:.*\s*\/\s*(\d+)%', line)
+            logging.debug("got mono")
             if m:
                 self._mono = m.group(1)
+                logging.debug("mono value: {}".format(self._mono))
         else:
             m = re.search(r'left:.*\s*\/\s*(\d+)%.*right:.*\s*\/\s*(\d+)%', line)
+            logging.debug("not mono")
             if m:
                 self._left = m.group(1)
                 self._right = m.group(2)
+                logging.debug("got left: {} right: {}".format(self._left, self._right))
         return True
 
     def _default_device(self):
         output = bumblebee.util.execute("pacmd stat")
         pattern = "Default sink name: " if self.name == "pasink" else "Default source name: "
         for line in output.split("\n"):
+            logging.debug("device lookup: {}".format(line))
             if line.startswith(pattern):
+                logging.debug("found pattern")
                 return line.replace(pattern, "")
         return "n/a"
 
@@ -133,12 +141,14 @@ class Module(bumblebee.engine.Module):
             self._failed = False
             channel = "sinks" if self.name == "pasink" else "sources"
             device = self._default_device()
+            logging.debug("channel: {} device: {}".format(channel, device))
 
             result = bumblebee.util.execute("pacmd list-{}".format(channel))
             found = False
 
             for line in result.split("\n"):
                 if "<"+device+">" in line:
+                    logging.debug("found device {}".format(device))
                     found = True
                     continue
                 if found is False:
@@ -146,10 +156,12 @@ class Module(bumblebee.engine.Module):
                 for pattern in self._patterns:
                     if not pattern["expr"] in line:
                         continue
+                    logging.debug("found pattern {}".format(pattern))
                     if pattern["callback"](line) is False and found == True:
                         return
-        except Exception:
+        except Exception as e:
             self._failed = True
+            logging.debug("failed: {}".format(str(e)))
             if bumblebee.util.asbool(self.parameter("autostart", False)):
                 try:
                     bumblebee.util.execute("pulseaudio --start")
